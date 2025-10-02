@@ -6,8 +6,8 @@
   <title>Flipbook PDF (GitHub Pages)</title>
   <!-- Dependencies (CDN) -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <!-- turn.js (simple page flip) -->
- <script src="https://cdnjs.cloudflare.com/ajax/libs/turn.js/4.1.0/turn.js"></script>
+  <!-- turn.js (sử dụng file chuẩn, không dùng min.js vì không có trên CDNJS) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/turn.js/4.1.0/turn.js"></script>
   <!-- PDF.js (mozilla) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <style>
@@ -68,26 +68,20 @@ let pdfDoc = null;
 let pageCanvases = [];
 
 function clearFlipbook(){
-  flipbookEl.turn('destroy');
+  if (flipbookEl.data('turn')) flipbookEl.turn('destroy');
   flipbookEl.empty();
   pageCanvases = [];
 }
 
 async function loadPdfFromUrl(url){
   try{
-    $('.page').remove();
-    if (flipbookEl.data('turn')){
-      flipbookEl.turn('destroy');
-      flipbookEl.empty();
-    }
+    clearFlipbook();
     const loadingTask = pdfjsLib.getDocument(url);
     pdfDoc = await loadingTask.promise;
     const num = pdfDoc.numPages;
-    // render pages sequentially (keeps memory lower)
     for(let i=1;i<=num;i++){
       const page = await pdfDoc.getPage(i);
       const viewport = page.getViewport({scale:1.5});
-      // create canvas matching half-book page size (we will show two pages per spread)
       const canvas = document.createElement('canvas');
       canvas.width = Math.min(viewport.width, 1000);
       canvas.height = Math.min(viewport.height, 2000);
@@ -96,20 +90,17 @@ async function loadPdfFromUrl(url){
       await page.render(renderContext).promise;
 
       const pageDiv = $('<div class="page"></div>');
-      // fit canvas inside page
       $(canvas).css({width:'100%',height:'100%',display:'block'});
       pageDiv.append(canvas);
       flipbookEl.append(pageDiv);
       pageCanvases.push(canvas);
     }
 
-    // ensure even number of pages (turn.js needs even count for a full spread)
     if (pageCanvases.length % 2 !== 0){
       const blank = $('<div class="page"></div>');
       flipbookEl.append(blank);
     }
 
-    // init turn.js
     flipbookEl.turn({
       width: flipbookEl.width(),
       height: flipbookEl.height(),
@@ -122,7 +113,6 @@ async function loadPdfFromUrl(url){
   }
 }
 
-// file input
 $('#file-input').on('change', function(e){
   const f = e.target.files[0];
   if (!f) return;
@@ -130,23 +120,18 @@ $('#file-input').on('change', function(e){
   loadPdfFromUrl(url);
 });
 
-// drag & drop support
 $(document).on('dragover', function(e){e.preventDefault();e.originalEvent.dataTransfer.dropEffect = 'copy';});
 $(document).on('drop', function(e){e.preventDefault();const f = e.originalEvent.dataTransfer.files[0]; if (f && f.type === 'application/pdf'){ const url = URL.createObjectURL(f); loadPdfFromUrl(url);} else alert('Vui lòng thả file PDF.');});
 
 $('#open-sample').on('click', function(){
-  // this attempts to load sample.pdf from the same repo root
   loadPdfFromUrl('sample.pdf');
 });
 
-// navigation
-$('#prev').on('click', function(){ flipbookEl.turn('previous'); });
-$('#next').on('click', function(){ flipbookEl.turn('next'); });
+$('#prev').on('click', function(){ if(flipbookEl.data('turn')) flipbookEl.turn('previous'); });
+$('#next').on('click', function(){ if(flipbookEl.data('turn')) flipbookEl.turn('next'); });
 
-// keyboard navigation
-$(document).on('keydown', function(e){ if (e.key === 'ArrowLeft') flipbookEl.turn('previous'); if (e.key === 'ArrowRight') flipbookEl.turn('next'); });
+$(document).on('keydown', function(e){ if (e.key === 'ArrowLeft' && flipbookEl.data('turn')) flipbookEl.turn('previous'); if (e.key === 'ArrowRight' && flipbookEl.data('turn')) flipbookEl.turn('next'); });
 
-// make responsive on resize
 $(window).on('resize', function(){ if (flipbookEl.data('turn')){
   flipbookEl.turn('size', flipbookEl.width(), flipbookEl.height());
 }});
