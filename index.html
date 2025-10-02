@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flipbook PDF (GitHub Pages)</title>
+  <!-- Dependencies (CDN) -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <!-- turn.js (simple page flip) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/turn.js/4.1.0/turn.min.js"></script>
+  <!-- PDF.js (mozilla) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <style>
+    :root{--bg:#0f172a;--card:#0b1220;--accent:#0ea5a4}
+    body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial;background:linear-gradient(180deg,#06202b,#0b1220);color:#e6eef6;min-height:100vh;display:flex;flex-direction:column;align-items:center}
+    header{width:100%;padding:18px 20px;box-sizing:border-box;display:flex;gap:12px;align-items:center}
+    .brand{font-weight:700;font-size:18px}
+    .controls{margin-left:auto;display:flex;gap:8px}
+    .btn{background:transparent;border:1px solid rgba(255,255,255,0.08);padding:8px 12px;border-radius:8px;color:inherit;cursor:pointer}
+    main{width:100%;max-width:1100px;padding:18px;box-sizing:border-box}
+    #flipbook-wrapper{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);padding:18px;border-radius:10px;display:flex;justify-content:center}
+    #flipbook{width:800px;height:520px}
+    .page{width:400px;height:520px;display:flex;align-items:center;justify-content:center;background:white;border-radius:4px;overflow:hidden}
+    .loader{display:flex;gap:8px;align-items:center}
+    .small{font-size:13px;opacity:.8}
+    footer{width:100%;max-width:1100px;padding:12px 18px;box-sizing:border-box;color:rgba(230,238,246,0.6);font-size:13px}
+    @media(max-width:900px){#flipbook{width:320px;height:420px}.page{width:160px;height:420px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Flipbook PDF — GitHub Pages</div>
+    <div class="controls">
+      <label class="btn">
+        Chọn PDF
+        <input id="file-input" type="file" accept="application/pdf" style="display:none">
+      </label>
+      <button id="open-sample" class="btn">Mở sample.pdf</button>
+      <button id="prev" class="btn">‹ Trước</button>
+      <button id="next" class="btn">Sau ›</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="flipbook-wrapper">
+      <div id="flipbook">
+        <div class="page" style="display:flex;align-items:center;justify-content:center;color:#333;background:linear-gradient(180deg,#fff,#f3f5f7)">
+          <div style="text-align:center;padding:10px">
+            <div style="font-weight:700;color:#0b2440">Chờ PDF...</div>
+            <div class="small">Bạn có thể kéo thả một file PDF vào trang, hoặc nhấn "Chọn PDF".</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="height:8px"></div>
+    <div class="small">Hướng dẫn nhanh: đặt file PDF vào repository (ví dụ: <code>sample.pdf</code>) hoặc chọn file trực tiếp. Sau đó bật GitHub Pages trên nhánh <code>main</code> hoặc <code>gh-pages</code>.</div>
+  </main>
+
+  <footer>
+    Tệp HTML này là một trang đơn (single-file) dùng PDF.js để vẽ từng trang lên canvas, sau đó dùng turn.js để tạo hiệu ứng lật trang. (Tương thích GitHub Pages)
+  </footer>
+
+<script>
+// Config
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+const flipbookEl = $('#flipbook');
+let pdfDoc = null;
+let pageCanvases = [];
+
+function clearFlipbook(){
+  flipbookEl.turn('destroy');
+  flipbookEl.empty();
+  pageCanvases = [];
+}
+
+async function loadPdfFromUrl(url){
+  try{
+    $('.page').remove();
+    if (flipbookEl.data('turn')){
+      flipbookEl.turn('destroy');
+      flipbookEl.empty();
+    }
+    const loadingTask = pdfjsLib.getDocument(url);
+    pdfDoc = await loadingTask.promise;
+    const num = pdfDoc.numPages;
+    // render pages sequentially (keeps memory lower)
+    for(let i=1;i<=num;i++){
+      const page = await pdfDoc.getPage(i);
+      const viewport = page.getViewport({scale:1.5});
+      // create canvas matching half-book page size (we will show two pages per spread)
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(viewport.width, 1000);
+      canvas.height = Math.min(viewport.height, 2000);
+      const ctx = canvas.getContext('2d');
+      const renderContext = {canvasContext: ctx, viewport: viewport};
+      await page.render(renderContext).promise;
+
+      const pageDiv = $('<div class="page"></div>');
+      // fit canvas inside page
+      $(canvas).css({width:'100%',height:'100%',display:'block'});
+      pageDiv.append(canvas);
+      flipbookEl.append(pageDiv);
+      pageCanvases.push(canvas);
+    }
+
+    // ensure even number of pages (turn.js needs even count for a full spread)
+    if (pageCanvases.length % 2 !== 0){
+      const blank = $('<div class="page"></div>');
+      flipbookEl.append(blank);
+    }
+
+    // init turn.js
+    flipbookEl.turn({
+      width: flipbookEl.width(),
+      height: flipbookEl.height(),
+      autoCenter: true
+    });
+
+  }catch(err){
+    alert('Không thể tải PDF: ' + err.message);
+    console.error(err);
+  }
+}
+
+// file input
+$('#file-input').on('change', function(e){
+  const f = e.target.files[0];
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  loadPdfFromUrl(url);
+});
+
+// drag & drop support
+$(document).on('dragover', function(e){e.preventDefault();e.originalEvent.dataTransfer.dropEffect = 'copy';});
+$(document).on('drop', function(e){e.preventDefault();const f = e.originalEvent.dataTransfer.files[0]; if (f && f.type === 'application/pdf'){ const url = URL.createObjectURL(f); loadPdfFromUrl(url);} else alert('Vui lòng thả file PDF.');});
+
+$('#open-sample').on('click', function(){
+  // this attempts to load sample.pdf from the same repo root
+  loadPdfFromUrl('sample.pdf');
+});
+
+// navigation
+$('#prev').on('click', function(){ flipbookEl.turn('previous'); });
+$('#next').on('click', function(){ flipbookEl.turn('next'); });
+
+// keyboard navigation
+$(document).on('keydown', function(e){ if (e.key === 'ArrowLeft') flipbookEl.turn('previous'); if (e.key === 'ArrowRight') flipbookEl.turn('next'); });
+
+// make responsive on resize
+$(window).on('resize', function(){ if (flipbookEl.data('turn')){
+  flipbookEl.turn('size', flipbookEl.width(), flipbookEl.height());
+}});
+
+</script>
+</body>
+</html>
